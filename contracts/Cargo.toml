@@ -1,30 +1,31 @@
 [package]
 name = "oracle-sanity-engine-contracts"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Core WASM smart-contract primitives for oracle cross-validation and circuit breaking"
+description = "Soroban smart contract for oracle cross-validation and circuit breaking on Stellar"
 authors = ["ScutumNetwork"]
 license = "MIT"
 repository = "https://github.com/ScutumNetwork/oracle-sanity-engine"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
-# ---------------------------------------------------------------------------
-# Use `wee_alloc` for a tiny allocator optimized for WASM code size.
-# Use `no_std` compatible crates only.
-# ---------------------------------------------------------------------------
-wee_alloc = "0.4"
-# integer-sqrt for no_std fixed-point helper (optional convenience)
-integer-sqrt = "0.1"
+soroban-sdk = "22.0"
 
-# serde for (de)serialization of adapter payloads (no_std via alloc feature)
-serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
-serde_json = { version = "1", default-features = false, features = ["alloc"] }
+[dev-dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }
 
 [profile.release]
-opt-level = "s"          # Optimize for size (WASM)
-lto = true
-codegen-units = 1
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
 panic = "abort"
+incremental = false
+lto = true
+
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true
