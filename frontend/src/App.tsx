@@ -28,8 +28,10 @@ import { DeviationChart } from "./components/DeviationChart";
 import { OracleHealthTable } from "./components/OracleHealthTable";
 import { AlertFeed } from "./components/AlertFeed";
 import { AdminOverridePanel } from "./components/AdminOverridePanel";
+import { ContractStatusCard } from "./components/ContractStatusCard";
 import { StatusBadge, type StatusVariant } from "./components/StatusBadge";
 import { OracleDataProvider, useOracleData } from "./hooks/useOracleData";
+import { ContractDataProvider } from "./hooks/useContractData";
 import { Shield, Wifi, WifiOff, Activity } from "lucide-react";
 
 // ===========================================================================
@@ -39,22 +41,26 @@ import { Shield, Wifi, WifiOff, Activity } from "lucide-react";
 export default function App() {
   return (
     <OracleDataProvider>
-      <div className="min-h-screen bg-surface flex flex-col">
-        {/* --------------------------------------------------------------- */}
-        {/* HEADER */}
-        {/* --------------------------------------------------------------- */}
-        <DashboardHeader />
+      <ContractDataProvider>
+        <div className="min-h-screen bg-surface flex flex-col">
+          {/* --------------------------------------------------------------- */}
+          {/* HEADER */}
+          {/* --------------------------------------------------------------- */}
+          <DashboardHeader />
 
-        {/* --------------------------------------------------------------- */}
-        {/* MAIN CONTENT AREA */}
-        {/* --------------------------------------------------------------- */}
-        <main className="flex-1 flex flex-col lg:flex-row gap-4 p-4 lg:p-6 max-w-[1600px] mx-auto w-full">
-          {/* --------------------------------------------------------- */}
-          {/* LEFT COLUMN: Charts + Table */}
-          {/* --------------------------------------------------------- */}
-          <div className="flex-1 flex flex-col gap-4 min-w-0">
-            {/* Deviation chart card */}
-            <section className="card-glass p-5 h-[340px] flex flex-col">
+          {/* --------------------------------------------------------------- */}
+          {/* MAIN CONTENT AREA */}
+          {/* --------------------------------------------------------------- */}
+          <main className="flex-1 flex flex-col lg:flex-row gap-4 p-4 lg:p-6 max-w-[1600px] mx-auto w-full">
+            {/* --------------------------------------------------------- */}
+            {/* LEFT COLUMN: Charts + Table */}
+            {/* --------------------------------------------------------- */}
+            <div className="flex-1 flex flex-col gap-4 min-w-0">
+              {/* Contract status card */}
+              <ContractStatusCard />
+
+              {/* Deviation chart card */}
+              <section className="card-glass p-5 h-[340px] flex flex-col">
               <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wider mb-3">
                 Deviation Over Time
               </h2>
@@ -97,6 +103,7 @@ export default function App() {
           </p>
         </footer>
       </div>
+      </ContractDataProvider>
     </OracleDataProvider>
   );
 }
