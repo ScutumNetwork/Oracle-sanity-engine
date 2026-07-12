@@ -1,0 +1,39 @@
+{
+  "name": "oracle-sanity-engine",
+  "version": "1.0.0",
+  "description": "Open-source developer infrastructure tool and security public good for eliminating oracle exploits through multi-feed cross-validation, circuit breakers, and real-time monitoring.",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build:contracts": "cd contracts && cargo build --target wasm32-unknown-unknown --release",
+    "test:contracts": "cd contracts && cargo test",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "rm -rf contracts/target backend/dist frontend/dist node_modules"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ScutumNetwork/oracle-sanity-engine"
+  },
+  "keywords": [
+    "oracle",
+    "security",
+    "web3",
+    "smart-contract",
+    "cross-validation",
+    "circuit-breaker",
+    "wasm",
+    "open-source"
+  ],
+  "author": "ScutumNetwork",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

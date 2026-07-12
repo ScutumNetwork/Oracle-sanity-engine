@@ -1,0 +1,30 @@
+[package]
+name = "oracle-sanity-engine-contracts"
+version = "0.1.0"
+edition = "2021"
+description = "Core WASM smart-contract primitives for oracle cross-validation and circuit breaking"
+authors = ["ScutumNetwork"]
+license = "MIT"
+repository = "https://github.com/ScutumNetwork/oracle-sanity-engine"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# ---------------------------------------------------------------------------
+# Use `wee_alloc` for a tiny allocator optimized for WASM code size.
+# Use `no_std` compatible crates only.
+# ---------------------------------------------------------------------------
+wee_alloc = "0.4"
+# integer-sqrt for no_std fixed-point helper (optional convenience)
+integer-sqrt = "0.1"
+
+# serde for (de)serialization of adapter payloads (no_std via alloc feature)
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+
+[profile.release]
+opt-level = "s"          # Optimize for size (WASM)
+lto = true
+codegen-units = 1
+panic = "abort"

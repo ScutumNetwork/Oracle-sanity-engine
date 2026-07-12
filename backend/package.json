@@ -1,0 +1,32 @@
+{
+  "name": "@scutumnetwork/oracle-sanity-engine-backend",
+  "version": "1.0.0",
+  "description": "Off-chain indexing, WebSocket event listener, and webhook alert system for Oracle Sanity Engine",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src/ --ext .ts"
+  },
+  "dependencies": {
+    "fastify": "^4.28.0",
+    "@fastify/cors": "^9.0.1",
+    "@fastify/websocket": "^10.0.1",
+    "ethers": "^6.13.0",
+    "dotenv": "^16.4.5",
+    "pino": "^9.3.0",
+    "pino-pretty": "^11.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.16.0",
+    "@types/node": "^20.14.0",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
