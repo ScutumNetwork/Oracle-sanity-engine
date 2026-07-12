@@ -12,7 +12,8 @@
 //   — Connection status tracking
 // ---------------------------------------------------------------------------
 
-import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
+import type { ReactNode } from "react";
 
 // ===========================================================================
 // DATA TYPES
@@ -229,10 +230,16 @@ export function OracleDataProvider({ children }: OracleDataProviderProps) {
     };
   }, [refresh]);
 
+  const contextValue: OracleDataContextValue = {
+    events,
+    stats,
+    connectionStatus,
+    refresh,
+    isLoaded,
+  };
+
   return (
-    <OracleDataContext.Provider
-      value={{ events, stats, connectionStatus, refresh, isLoaded }}
-    >
+    <OracleDataContext.Provider value={contextValue}>
       {children}
     </OracleDataContext.Provider>
   );

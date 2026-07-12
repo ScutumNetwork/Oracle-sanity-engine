@@ -24,11 +24,13 @@
 //   - Custom hooks for WebSocket data
 // ---------------------------------------------------------------------------
 
-import { DashboardHeader } from "./components/DashboardHeader";
 import { DeviationChart } from "./components/DeviationChart";
 import { OracleHealthTable } from "./components/OracleHealthTable";
 import { AlertFeed } from "./components/AlertFeed";
-import { OracleDataProvider } from "./hooks/useOracleData";
+import { AdminOverridePanel } from "./components/AdminOverridePanel";
+import { StatusBadge, type StatusVariant } from "./components/StatusBadge";
+import { OracleDataProvider, useOracleData } from "./hooks/useOracleData";
+import { Shield, Wifi, WifiOff, Activity } from "lucide-react";
 
 // ===========================================================================
 // APP
@@ -102,12 +104,6 @@ export default function App() {
 // ===========================================================================
 // DASHBOARD HEADER (inline component — can be extracted later)
 // ===========================================================================
-
-import { useOracleData, type ConnectionStatus } from "./hooks/useOracleData";
-import { AdminOverridePanel } from "./components/AdminOverridePanel";
-import { StatusBadge, type StatusVariant } from "./components/StatusBadge";
-import { Shield, Wifi, WifiOff, Activity } from "lucide-react";
-import clsx from "clsx";
 
 function DashboardHeader() {
   const { connectionStatus, stats } = useOracleData();
