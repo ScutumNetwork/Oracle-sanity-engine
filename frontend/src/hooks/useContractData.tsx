@@ -94,6 +94,27 @@ function unwrapResult(raw: unknown): unknown {
 }
 
 /**
+ * Coerces a Soroban-decoded integer into a JS `number`.
+ *
+ * `scValToNative` returns `bigint` for Soroban i64/u64/i128/u128 values
+ * (e.g. `get_config` and `get_last_diagnostic`), which would otherwise cause
+ * `TypeError`s when mixed with `number` arithmetic in components. Every value
+ * this app reads (threshold bps, staleness seconds, deviation bps, error
+ * codes) fits within `Number.MAX_SAFE_INTEGER`, so the conversion is lossless
+ * in practice.
+ */
+function toNumber(value: unknown): number {
+  if (typeof value === "bigint" || typeof value === "number") {
+    return Number(value);
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return 0;
+}
+
+/**
  * Calls a Soroban contract function via simulation.
  *
  * Builds a read-only transaction with a dummy account, simulates it,
@@ -167,12 +188,21 @@ export function ContractDataProvider({ children }: ContractDataProviderProps) {
       // is_locked returns bool directly
       setIsLocked(lockedRaw as boolean);
 
-      // get_config returns Result<ValidationConfig, OracleError>
-      const unwrappedConfig = unwrapResult(configRaw) as ContractConfig;
-      setConfig(unwrappedConfig);
+      // get_config returns Result<ValidationConfig, OracleError> whose fields
+      // are decoded as `bigint` by scValToNative — coerce them to `number`.
+      const unwrappedConfig = unwrapResult(configRaw) as {
+        deviation_threshold_bps: unknown;
+        max_staleness_secs: unknown;
+      };
+      setConfig({
+        deviation_threshold_bps: toNumber(
+          unwrappedConfig.deviation_threshold_bps
+        ),
+        max_staleness_secs: toNumber(unwrappedConfig.max_staleness_secs),
+      });
 
-      // get_last_diagnostic returns Option<i128> -> number | null
-      setLastDiagnostic(diagnosticRaw as number | null);
+      // get_last_diagnostic returns Option<i128> -> bigint | null
+      setLastDiagnostic(diagnosticRaw == null ? null : toNumber(diagnosticRaw));
 
       setError(null);
       setIsLoaded(true);
