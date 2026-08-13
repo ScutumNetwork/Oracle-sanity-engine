@@ -1,60 +1,33 @@
 // ---------------------------------------------------------------------------
 // Oracle Sanity Engine — Alert Feed Component
 //
-// Displays a streaming log of recent circuit-breaker events in reverse
+// Displays a streaming log of recent circuit-breaker trips in reverse
 // chronological order. Each entry shows:
-//   - Timestamp
+//   - Detection time
 //   - Severity indicator
-//   - Key metrics (deviation, prices)
-//   - Transaction hash (truncated)
+//   - Trip reason and reason code
+//   - Deviation threshold and max staleness at detection time
 //
 // Designed for the dashboard's live alert sidebar.
 // ---------------------------------------------------------------------------
 
 import { useOracleData, type CircuitBreakerEvent } from "../hooks/useOracleData";
 import { StatusBadge } from "./StatusBadge";
-import clsx from "clsx";
-import { AlertTriangle, Clock, Activity, ExternalLink } from "lucide-react";
+import { AlertTriangle, Clock } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Sub-component: Single alert row
 // ---------------------------------------------------------------------------
 
 function AlertRow({ event }: { event: CircuitBreakerEvent }) {
-  const deviationBps = Number(event.deviationBps);
-  const thresholdBps = Number(event.thresholdBps);
-  const severityPct = (deviationBps / thresholdBps) * 100;
-
-  // Color-code based on how far above threshold the deviation is
-  const severityClass =
-    severityPct > 200
-      ? "border-red-500/30 bg-red-500/5"
-      : severityPct > 100
-        ? "border-amber-500/30 bg-amber-500/5"
-        : "border-slate-500/30";
-
-  const time = new Date(event.processedAt).toLocaleTimeString();
+  const time = new Date(event.detectedAt).toLocaleTimeString();
 
   return (
-    <div
-      className={clsx(
-        "flex flex-col gap-2 p-3 rounded-lg border animate-slide-up",
-        severityClass
-      )}
-    >
+    <div className="flex flex-col gap-2 p-3 rounded-lg border border-red-500/30 bg-red-500/5 animate-slide-up">
       {/* Header row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <AlertTriangle
-            className={clsx(
-              "w-4 h-4",
-              severityPct > 200
-                ? "text-red-400"
-                : severityPct > 100
-                  ? "text-amber-400"
-                  : "text-slate-400"
-            )}
-          />
+          <AlertTriangle className="w-4 h-4 text-red-400" />
           <span className="text-xs font-medium text-slate-400">
             Circuit Breaker
           </span>
@@ -65,45 +38,25 @@ function AlertRow({ event }: { event: CircuitBreakerEvent }) {
         </div>
       </div>
 
-      {/* Metrics row */}
+      {/* Reason */}
+      <p className="text-sm text-slate-200">{event.reason}</p>
+
+      {/* Metrics */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-        <div className="flex items-center gap-1.5 text-slate-400">
-          <Activity className="w-3 h-3" />
-          <span className="text-xs">Deviation</span>
-        </div>
+        <span className="text-xs text-slate-500">Reason Code</span>
         <span className="font-mono text-right tabular-nums text-amber-400 font-medium">
-          {deviationBps.toLocaleString()} bps
+          {event.reasonCode}
         </span>
 
-        <span className="text-xs text-slate-500">Primary</span>
+        <span className="text-xs text-slate-500">Threshold</span>
         <span className="font-mono text-right tabular-nums text-slate-300">
-          {Number(event.primaryPrice).toLocaleString()}
+          {event.deviationThresholdBps.toLocaleString()} bps
         </span>
 
-        <span className="text-xs text-slate-500">Fallback</span>
+        <span className="text-xs text-slate-500">Max Staleness</span>
         <span className="font-mono text-right tabular-nums text-slate-300">
-          {Number(event.fallbackPrice).toLocaleString()}
+          {event.maxStalenessSecs}s
         </span>
-      </div>
-
-      {/* Tx hash */}
-      <div className="flex items-center justify-between mt-1">
-        <code className="text-xs text-slate-500 font-mono">
-          {event.txHash.slice(0, 10)}...{event.txHash.slice(-8)}
-        </code>
-        <button
-          className="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1 transition-colors"
-          onClick={() => {
-            // In production: open block explorer
-            window.open(
-              `https://etherscan.io/tx/${event.txHash}`,
-              "_blank"
-            );
-          }}
-        >
-          Explorer
-          <ExternalLink className="w-3 h-3" />
-        </button>
       </div>
     </div>
   );
@@ -163,7 +116,7 @@ export function AlertFeed() {
             </div>
             <p className="text-sm font-medium">No alerts yet</p>
             <p className="text-xs text-slate-600 text-center max-w-[200px]">
-              Circuit breaker events will appear here in real-time when detected.
+              Circuit breaker trips will appear here when detected.
             </p>
           </div>
         )}

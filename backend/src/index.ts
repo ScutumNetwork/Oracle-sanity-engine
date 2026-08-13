@@ -153,23 +153,14 @@ async function buildApp() {
       };
     }
 
-    const deviations = recentEvents.map((e) => Number(e.deviationBps));
-    const avgDeviation =
-      deviations.reduce((a, b) => a + b, 0) / deviations.length;
-    const maxDeviation = Math.max(...deviations);
-    const minDeviation = Math.min(...deviations);
-
     const last24h = recentEvents.filter(
       (e) =>
-        Date.now() - new Date(e.processedAt).getTime() < 24 * 60 * 60 * 1000
+        Date.now() - new Date(e.detectedAt).getTime() < 24 * 60 * 60 * 1000
     );
 
     return {
       totalEvents: recentEvents.length,
       eventsLast24h: last24h.length,
-      avgDeviationBps: Math.round(avgDeviation),
-      maxDeviationBps: maxDeviation,
-      minDeviationBps: minDeviation,
       latestEvent: recentEvents[recentEvents.length - 1] || null,
       alertChannels: ALERT_CHANNELS.filter((ch) => ch.enabled).map((ch) => ({
         type: ch.type,
@@ -279,7 +270,7 @@ async function buildApp() {
           clearInterval(heartbeatInterval);
         });
 
-        socket.on("error", (err) => {
+        socket.on("error", (err: Error) => {
           console.error("[WS] Socket error:", err);
           clearInterval(heartbeatInterval);
         });
