@@ -42,6 +42,7 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 
 pub use error::OracleError;
 
+mod adapters;
 mod error;
 
 // ===========================================================================
