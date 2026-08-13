@@ -22,7 +22,6 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-import { useOracleData } from "../hooks/useOracleData";
 import { useMemo } from "react";
 
 // ===========================================================================
@@ -70,34 +69,13 @@ function CustomTooltip({
 // ===========================================================================
 
 export function DeviationChart() {
-  const { events } = useOracleData();
-
   /**
-   * Transforms raw events into chart-ready data points.
-   *
-   * Each point includes the deviation, threshold, time, and a human-readable
-   * label for the tooltip.
+   * The Soroban contract exposes circuit-breaker lock state and the last
+   * diagnostic value, but not a per-event deviation history. Until that data
+   * is available on-chain, the chart renders sample data to demonstrate the
+   * visualization.
    */
-  const chartData: ChartDataPoint[] = useMemo(() => {
-    if (events.length === 0) {
-      // Generate sample data for the empty state demo
-      return generateSampleData();
-    }
-
-    return events
-      .slice()
-      .reverse()
-      .slice(-30) // Last 30 data points
-      .map((event, i) => ({
-        time: new Date(event.processedAt).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        deviation: Number(event.deviationBps),
-        threshold: Number(event.thresholdBps),
-        label: `Event #${i + 1}`,
-      }));
-  }, [events]);
+  const chartData: ChartDataPoint[] = useMemo(() => generateSampleData(), []);
 
   const maxThreshold = Math.max(...chartData.map((d) => d.threshold), 500);
   const maxDeviation = Math.max(...chartData.map((d) => d.deviation), 0);

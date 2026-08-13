@@ -22,25 +22,17 @@ import type { ReactNode } from "react";
 /** Matches the backend's CircuitBreakerEvent structure. */
 export interface CircuitBreakerEvent {
   id: string;
-  txHash: string;
-  blockNumber: number;
-  primaryPrice: string;
-  fallbackPrice: string;
-  deviationBps: string;
-  thresholdBps: string;
-  primaryTimestamp: string;
-  fallbackTimestamp: string;
   reason: string;
-  processedAt: string;
+  reasonCode: number;
+  deviationThresholdBps: number;
+  maxStalenessSecs: number;
+  detectedAt: string;
 }
 
 /** Aggregate statistics from the backend. */
 export interface OracleStats {
   totalEvents: number;
   eventsLast24h: number;
-  avgDeviationBps: number;
-  maxDeviationBps: number;
-  minDeviationBps: number;
   latestEvent: CircuitBreakerEvent | null;
   alertChannels: Array<{ type: string; name: string }>;
 }

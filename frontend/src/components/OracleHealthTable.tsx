@@ -273,15 +273,8 @@ export function OracleHealthTable() {
       {/* Footer: stats summary */}
       {stats && (
         <div className="px-4 py-2 border-t border-white/10 text-xs text-slate-500 flex items-center justify-between">
-          <span>
-            Avg deviation: {stats.avgDeviationBps} bps
-          </span>
-          <span>
-            Max deviation: {stats.maxDeviationBps} bps
-          </span>
-          <span>
-            Events (24h): {stats.eventsLast24h}
-          </span>
+          <span>Total trips: {stats.totalEvents}</span>
+          <span>Trips (24h): {stats.eventsLast24h}</span>
         </div>
       )}
     </div>
