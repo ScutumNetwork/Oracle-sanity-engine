@@ -30,23 +30,31 @@ import { AlertFeed } from "./components/AlertFeed";
 import { AdminOverridePanel } from "./components/AdminOverridePanel";
 import { ContractStatusCard } from "./components/ContractStatusCard";
 import { StatusBadge, type StatusVariant } from "./components/StatusBadge";
+import { NetworkSelector, type StellarNetwork, NETWORK_CONFIGS } from "./components/NetworkSelector";
+import { SimulationDrawer } from "./components/SimulationDrawer";
 import { OracleDataProvider, useOracleData } from "./hooks/useOracleData";
 import { ContractDataProvider } from "./hooks/useContractData";
 import { Shield, Wifi, WifiOff, Activity } from "lucide-react";
+import { useState } from "react";
 
 // ===========================================================================
 // APP
 // ===========================================================================
 
 export default function App() {
+  const [selectedNetwork, setSelectedNetwork] = useState<StellarNetwork>("testnet");
+
   return (
     <OracleDataProvider>
-      <ContractDataProvider>
+      <ContractDataProvider networkConfig={NETWORK_CONFIGS[selectedNetwork]}>
         <div className="min-h-screen bg-surface flex flex-col">
           {/* --------------------------------------------------------------- */}
           {/* HEADER */}
           {/* --------------------------------------------------------------- */}
-          <DashboardHeader />
+          <DashboardHeader 
+            selectedNetwork={selectedNetwork}
+            onNetworkChange={setSelectedNetwork}
+          />
 
           {/* --------------------------------------------------------------- */}
           {/* MAIN CONTENT AREA */}
@@ -112,7 +120,12 @@ export default function App() {
 // DASHBOARD HEADER (inline component — can be extracted later)
 // ===========================================================================
 
-function DashboardHeader() {
+interface DashboardHeaderProps {
+  selectedNetwork: StellarNetwork;
+  onNetworkChange: (network: StellarNetwork) => void;
+}
+
+function DashboardHeader({ selectedNetwork, onNetworkChange }: DashboardHeaderProps) {
   const { connectionStatus, stats } = useOracleData();
 
   const statusVariant: StatusVariant =
@@ -148,8 +161,13 @@ function DashboardHeader() {
             </div>
           </div>
 
-          {/* Center: Connection status */}
+          {/* Center: Connection status + Network selector */}
           <div className="hidden md:flex items-center gap-4">
+            <NetworkSelector 
+              selectedNetwork={selectedNetwork} 
+              onNetworkChange={onNetworkChange} 
+            />
+            
             <div className="flex items-center gap-2 text-xs text-slate-400">
               {connectionStatus === "connected" ? (
                 <Wifi className="w-3.5 h-3.5 text-severity-safe" />
@@ -169,8 +187,9 @@ function DashboardHeader() {
             )}
           </div>
 
-          {/* Right: Admin action */}
+          {/* Right: Admin action + Simulation */}
           <div className="flex items-center gap-3">
+            <SimulationDrawer />
             <AdminOverridePanel />
           </div>
         </div>
