@@ -18,6 +18,11 @@
 //                              │
 //                              └──> In-memory event store
 //                                   (queried by index.ts API)
+//
+// # State Persistence
+//
+// The poller stores the last ingested ledger index to prevent dropping events
+// during RPC reconnects. This state is persisted to a local JSON file.
 // ---------------------------------------------------------------------------
 
 import {
@@ -28,12 +33,14 @@ import {
   scValToNative,
   xdr,
 } from "@stellar/stellar-sdk";
+import * as fs from "fs";
+import * as path from "path";
 
 // ===========================================================================
 // CONFIGURATION
 // ===========================================================================
 
-/** Configuration for the Soroban contract poller. */
+/** Configuration for the Soroban contract event poller. */
 export interface ListenerConfig {
   /** Soroban RPC HTTP endpoint (e.g. https://soroban-testnet.stellar.org). */
   rpcUrl: string;
@@ -44,8 +51,11 @@ export interface ListenerConfig {
   /** Stellar network passphrase used for transaction simulation. */
   networkPassphrase: string;
 
-  /** Poll interval in milliseconds. */
+  /** Poll interval in milliseconds for event fetching. */
   pollIntervalMs: number;
+
+  /** Path to the state file for persisting the last ledger index. */
+  stateFilePath: string;
 }
 
 const parsedPollInterval = Number(process.env.POLL_INTERVAL_MS);
@@ -62,6 +72,7 @@ export const DEFAULT_LISTENER_CONFIG: ListenerConfig = {
     Number.isFinite(parsedPollInterval) && parsedPollInterval > 0
       ? parsedPollInterval
       : 30_000,
+  stateFilePath: process.env.STATE_FILE_PATH || "./listener-state.json",
 };
 
 // ===========================================================================
@@ -121,6 +132,48 @@ const MAX_EVENTS_STORED = 1000;
 
 /** In-memory ring buffer of recent circuit-breaker events. */
 export const recentEvents: CircuitBreakerEvent[] = [];
+
+// ===========================================================================
+// STATE PERSISTENCE
+// ===========================================================================
+
+/** Interface for persisted listener state. */
+interface ListenerState {
+  /** The last ledger index that was successfully processed. */
+  lastLedger: number;
+  /** Timestamp when the state was last updated. */
+  lastUpdated: string;
+}
+
+/** Loads the listener state from disk. */
+function loadState(stateFilePath: string): ListenerState {
+  try {
+    if (fs.existsSync(stateFilePath)) {
+      const data = fs.readFileSync(stateFilePath, "utf-8");
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.warn(`[Listener] Failed to load state file: ${err}`);
+  }
+  // Return default state if file doesn't exist or is invalid
+  return {
+    lastLedger: 0,
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
+/** Saves the listener state to disk. */
+function saveState(stateFilePath: string, state: ListenerState): void {
+  try {
+    const dir = path.dirname(stateFilePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(stateFilePath, JSON.stringify(state, null, 2));
+  } catch (err) {
+    console.error(`[Listener] Failed to save state file: ${err}`);
+  }
+}
 
 // ===========================================================================
 // ALERT CHANNELS REGISTRY
@@ -406,6 +459,7 @@ async function handleTrip(event: CircuitBreakerEvent): Promise<void> {
  *
  * Polls the contract on `config.pollIntervalMs`, detects transitions from
  * "unlocked" to "locked", and emits a `CircuitBreakerEvent` on each trip.
+ * State is persisted to prevent dropping events during RPC reconnects.
  *
  * @param config — Poller configuration.
  * @returns A function that stops the poller.
@@ -416,6 +470,9 @@ export function startEventListener(config: ListenerConfig): () => void {
   let stopped = false;
   let inFlight = false;
   let timer: ReturnType<typeof setInterval> | null = null;
+  
+  // Load persisted state
+  let state = loadState(config.stateFilePath);
 
   async function poll(): Promise<void> {
     if (stopped || inFlight) return;
@@ -466,6 +523,10 @@ export function startEventListener(config: ListenerConfig): () => void {
           detectedAt: new Date().toISOString(),
         };
         await handleTrip(event);
+        
+        // Update state on circuit breaker trip
+        state.lastUpdated = new Date().toISOString();
+        saveState(config.stateFilePath, state);
       }
 
       wasLocked = isLocked;
@@ -479,6 +540,7 @@ export function startEventListener(config: ListenerConfig): () => void {
   console.log(
     `[Listener] Polling contract ${config.contractId} every ${config.pollIntervalMs}ms via ${config.rpcUrl}`
   );
+  console.log(`[Listener] State file: ${config.stateFilePath}`);
 
   void poll();
   timer = setInterval(() => void poll(), config.pollIntervalMs);

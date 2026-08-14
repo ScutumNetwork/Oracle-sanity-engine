@@ -3,8 +3,8 @@
 //
 // This module defines the `OracleAdapter` trait: a standardized interface
 // that every oracle integration must implement. Community contributors can
-// easily add support for new oracle networks (Chainlink, Pyth, Band Protocol,
-// TWAP, RedStone, etc.) by implementing this trait.
+// easily add support for new oracle networks (Reflector, Band Protocol, Pyth,
+// etc.) by implementing this trait.
 //
 // Note: In a Soroban deployment, oracle prices are typically passed as
 // arguments to `get_safe_price` rather than fetched via cross-contract calls
@@ -12,7 +12,8 @@
 // for off-chain relayers and oracle abstraction layers.
 // ---------------------------------------------------------------------------
 
-pub mod chainlink;
+pub mod reflector;
+pub mod band;
 
 use soroban_sdk::contracttype;
 

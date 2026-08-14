@@ -43,27 +43,17 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 pub use error::OracleError;
 
 mod adapters;
+mod admin;
 mod error;
+mod math;
+mod storage;
 
 // ===========================================================================
-// STORAGE TYPES & KEYS
+// STORAGE TYPES
 // ===========================================================================
 
-/// Well-known storage keys for instance and temporary storage.
-const KEY_ADMIN: Symbol = symbol_short!("admin");
-const KEY_CONFIG: Symbol = symbol_short!("config");
-const KEY_IS_LOCKED: Symbol = symbol_short!("locked");
-const KEY_LAST_DIAG: Symbol = symbol_short!("last_diag");
-
-/// Validation configuration stored in instance storage.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ValidationConfig {
-    /// Maximum deviation threshold in basis points (1 bp = 0.01%).
-    pub deviation_threshold_bps: i128,
-    /// Maximum allowed age of a price feed in seconds.
-    pub max_staleness_secs: u64,
-}
+/// Re-export storage types for external use.
+pub use storage::ValidationConfig;
 
 /// The result of a successful price validation.
 #[contracttype]
@@ -73,6 +63,49 @@ pub struct SafePriceResult {
     pub safe_price: i128,
     /// The computed deviation in basis points.
     pub deviation_bps: i128,
+}
+
+// ===========================================================================
+// SOROBAN EVENTS
+// ===========================================================================
+
+/// Event topics for structured event emission.
+const EVENT_TOPIC_PRICE_VALIDATION: Symbol = symbol_short!("price_val");
+const EVENT_TOPIC_CIRCUIT_BREAKER: Symbol = symbol_short!("circuit");
+const EVENT_TOPIC_ADMIN_ACTION: Symbol = symbol_short!("admin_act");
+
+/// Event data for price validation.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PriceValidationEvent {
+    /// Whether validation passed (true) or failed (false).
+    pub passed: bool,
+    /// The computed deviation in basis points.
+    pub deviation_bps: i128,
+    /// The primary price used.
+    pub primary_price: i128,
+    /// The fallback price used.
+    pub fallback_price: i128,
+}
+
+/// Event data for circuit breaker state changes.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CircuitBreakerEvent {
+    /// Whether the circuit breaker is now locked (true) or unlocked (false).
+    pub is_locked: bool,
+    /// The error code that caused the trip (0 if unlocking).
+    pub error_code: u32,
+}
+
+/// Event data for admin actions.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminActionEvent {
+    /// The type of admin action performed.
+    pub action_type: Symbol,
+    /// Additional data (e.g., new threshold value).
+    pub data: i128,
 }
 
 // ===========================================================================
@@ -102,29 +135,38 @@ impl OmniCheckContract {
         deviation_threshold_bps: i128,
         max_staleness_secs: u64,
     ) {
-        // Require admin's signature for initialization
+        // Require admin's signature for initialization using Soroban native auth
         admin.require_auth();
 
         // Validate parameters
         if deviation_threshold_bps <= 0 {
-            panic!("deviation_threshold_bps must be positive");
+            panic_with_error!(env, OracleError::InvalidConfig);
         }
         if max_staleness_secs == 0 {
-            panic!("max_staleness_secs must be positive");
+            panic_with_error!(env, OracleError::InvalidConfig);
         }
 
-        // Store admin
-        env.storage().instance().set(&KEY_ADMIN, &admin);
+        // Store admin using admin module
+        admin::set_admin(&env, &admin);
 
-        // Store config
-        let config = ValidationConfig {
+        // Store config using storage module
+        let config = storage::ValidationConfig {
             deviation_threshold_bps,
             max_staleness_secs,
         };
-        env.storage().instance().set(&KEY_CONFIG, &config);
+        storage::set_config(&env, &config);
 
-        // Initialize lock state
-        env.storage().instance().set(&KEY_IS_LOCKED, &false);
+        // Initialize lock state using storage module
+        storage::set_locked(&env, false);
+
+        // Emit admin action event
+        env.events().publish(
+            EVENT_TOPIC_ADMIN_ACTION,
+            AdminActionEvent {
+                action_type: symbol_short!("init"),
+                data: deviation_threshold_bps,
+            },
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -137,8 +179,10 @@ impl OmniCheckContract {
     ///   1. Loads config from instance storage
     ///   2. Checks the circuit breaker lock state
     ///   3. Validates inputs and timestamps
-    ///   4. Computes deviation in basis points
+    ///   4. Computes deviation in basis points using math module
     ///   5. Auto-locks the circuit breaker if any check fails
+    ///   6. Bumps TTL on every execution
+    ///   7. Emits Soroban events for monitoring
     ///
     /// # Arguments
     /// - `primary_price` — Price from the primary oracle feed (scaled i128).
@@ -156,11 +200,11 @@ impl OmniCheckContract {
         fallback_price: i128,
         fallback_timestamp: u64,
     ) -> Result<SafePriceResult, OracleError> {
-        // Load config (error if not initialized)
-        let config = Self::load_config(&env)?;
+        // Load config using storage module (error if not initialized)
+        let config = storage::get_config(&env)?;
 
-        // Check circuit breaker lock
-        if Self::is_locked_internal(&env) {
+        // Check circuit breaker lock using storage module
+        if storage::is_locked(&env) {
             return Err(OracleError::CircuitBreakerTripped);
         }
 
@@ -179,20 +223,49 @@ impl OmniCheckContract {
 
         match result {
             Ok(safe_result) => {
-                // Store diagnostic in temporary storage (auto-expires)
-                env.storage().temporary().set(&KEY_LAST_DIAG, &safe_result.deviation_bps);
-                // Extend TTL so it lives long enough for event emission
-                env.storage().temporary().extend_ttl(&KEY_LAST_DIAG, 100, 100);
+                // Store diagnostic in temporary storage using storage module
+                storage::set_last_diagnostic(&env, safe_result.deviation_bps);
+                
+                // Store last prices for reference
+                storage::set_last_primary_price(&env, primary_price);
+                storage::set_last_fallback_price(&env, fallback_price);
+                storage::set_last_validation_timestamp(&env, current_time);
+
+                // Bump TTL for instance storage on successful execution
+                storage::bump_instance_ttl(&env);
+
+                // Emit price validation event
+                env.events().publish(
+                    EVENT_TOPIC_PRICE_VALIDATION,
+                    PriceValidationEvent {
+                        passed: true,
+                        deviation_bps: safe_result.deviation_bps,
+                        primary_price,
+                        fallback_price,
+                    },
+                );
+
                 Ok(safe_result)
             }
             Err(err) => {
-                // AUTO-LOCK: persist lock state to instance storage
-                env.storage().instance().set(&KEY_IS_LOCKED, &true);
+                // AUTO-LOCK: persist lock state using storage module
+                storage::set_locked(&env, true);
 
                 // Store error diagnostic in temporary storage
                 let error_code = err as u32;
-                env.storage().temporary().set(&KEY_LAST_DIAG, &(error_code as i128));
-                env.storage().temporary().extend_ttl(&KEY_LAST_DIAG, 100, 100);
+                storage::set_last_diagnostic(&env, error_code as i128);
+
+                // Bump TTL for instance storage even on failure
+                storage::bump_instance_ttl(&env);
+
+                // Emit circuit breaker trip event
+                env.events().publish(
+                    EVENT_TOPIC_CIRCUIT_BREAKER,
+                    CircuitBreakerEvent {
+                        is_locked: true,
+                        error_code,
+                    },
+                );
 
                 Err(err)
             }
@@ -205,19 +278,34 @@ impl OmniCheckContract {
 
     /// Returns whether the circuit breaker is currently tripped.
     pub fn is_locked(env: Env) -> bool {
-        Self::is_locked_internal(&env)
+        storage::is_locked(&env)
     }
 
     /// Returns the current deviation threshold (basis points) and
     /// max staleness (seconds), or an error if not initialized.
     pub fn get_config(env: Env) -> Result<ValidationConfig, OracleError> {
-        Self::load_config(&env)
+        storage::get_config(&env)
     }
 
     /// Returns the last diagnostic value from temporary storage.
     /// This could be the last deviation (in bps) or the last error code.
     pub fn get_last_diagnostic(env: Env) -> Option<i128> {
-        env.storage().temporary().get(&KEY_LAST_DIAG)
+        storage::get_last_diagnostic(&env)
+    }
+
+    /// Returns the last validated primary price from temporary storage.
+    pub fn get_last_primary_price(env: Env) -> Option<i128> {
+        storage::get_last_primary_price(&env)
+    }
+
+    /// Returns the last validated fallback price from temporary storage.
+    pub fn get_last_fallback_price(env: Env) -> Option<i128> {
+        storage::get_last_fallback_price(&env)
+    }
+
+    /// Returns the timestamp of the last successful validation.
+    pub fn get_last_validation_timestamp(env: Env) -> Option<u64> {
+        storage::get_last_validation_timestamp(&env)
     }
 
     // -----------------------------------------------------------------------
@@ -226,16 +314,33 @@ impl OmniCheckContract {
 
     /// Admin-only: unlocks the circuit breaker.
     ///
-    /// Requires the admin's signature. After unlocking, normal price
-    /// validation can resume.
+    /// Requires the admin's signature using Soroban native auth.
+    /// After unlocking, normal price validation can resume.
     pub fn admin_override_reset(env: Env) -> Result<(), OracleError> {
-        let admin = Self::require_admin(&env)?;
-        admin.require_auth();
+        let admin = admin::require_admin_auth(&env)?;
 
-        env.storage().instance().set(&KEY_IS_LOCKED, &false);
+        storage::set_locked(&env, false);
 
-        // Clear diagnostic
-        env.storage().temporary().remove(&KEY_LAST_DIAG);
+        // Clear diagnostic using storage module
+        storage::clear_temporary_storage(&env);
+
+        // Emit circuit breaker unlock event
+        env.events().publish(
+            EVENT_TOPIC_CIRCUIT_BREAKER,
+            CircuitBreakerEvent {
+                is_locked: false,
+                error_code: 0,
+            },
+        );
+
+        // Emit admin action event
+        env.events().publish(
+            EVENT_TOPIC_ADMIN_ACTION,
+            AdminActionEvent {
+                action_type: symbol_short!("reset"),
+                data: 0,
+            },
+        );
 
         Ok(())
     }
@@ -252,16 +357,24 @@ impl OmniCheckContract {
         env: Env,
         new_threshold_bps: i128,
     ) -> Result<(), OracleError> {
-        let admin = Self::require_admin(&env)?;
-        admin.require_auth();
+        let admin = admin::require_admin_auth(&env)?;
 
         if new_threshold_bps <= 0 {
             return Err(OracleError::InvalidConfig);
         }
 
-        let mut config = Self::load_config(&env)?;
+        let mut config = storage::get_config(&env)?;
         config.deviation_threshold_bps = new_threshold_bps;
-        env.storage().instance().set(&KEY_CONFIG, &config);
+        storage::set_config(&env, &config);
+
+        // Emit admin action event
+        env.events().publish(
+            EVENT_TOPIC_ADMIN_ACTION,
+            AdminActionEvent {
+                action_type: symbol_short!("upd_thresh"),
+                data: new_threshold_bps,
+            },
+        );
 
         Ok(())
     }
@@ -274,16 +387,24 @@ impl OmniCheckContract {
         env: Env,
         new_max_staleness_secs: u64,
     ) -> Result<(), OracleError> {
-        let admin = Self::require_admin(&env)?;
-        admin.require_auth();
+        let admin = admin::require_admin_auth(&env)?;
 
         if new_max_staleness_secs == 0 {
             return Err(OracleError::InvalidConfig);
         }
 
-        let mut config = Self::load_config(&env)?;
+        let mut config = storage::get_config(&env)?;
         config.max_staleness_secs = new_max_staleness_secs;
-        env.storage().instance().set(&KEY_CONFIG, &config);
+        storage::set_config(&env, &config);
+
+        // Emit admin action event
+        env.events().publish(
+            EVENT_TOPIC_ADMIN_ACTION,
+            AdminActionEvent {
+                action_type: symbol_short!("upd_stale"),
+                data: new_max_staleness_secs as i128,
+            },
+        );
 
         Ok(())
     }
@@ -292,33 +413,10 @@ impl OmniCheckContract {
     // INTERNAL HELPERS
     // =======================================================================
 
-    /// Loads the ValidationConfig from instance storage.
-    fn load_config(env: &Env) -> Result<ValidationConfig, OracleError> {
-        env.storage()
-            .instance()
-            .get(&KEY_CONFIG)
-            .ok_or(OracleError::NotInitialized)
-    }
-
-    /// Returns the admin address, or Unauthorized if not set.
-    fn require_admin(env: &Env) -> Result<Address, OracleError> {
-        env.storage()
-            .instance()
-            .get(&KEY_ADMIN)
-            .ok_or(OracleError::Unauthorized)
-    }
-
-    /// Checks the circuit breaker lock state.
-    fn is_locked_internal(env: &Env) -> bool {
-        env.storage()
-            .instance()
-            .get(&KEY_IS_LOCKED)
-            .unwrap_or(false)
-    }
-
     /// Pure validation logic (no storage interaction).
     ///
     /// Returns `Ok(SafePriceResult)` if all checks pass, or an `OracleError`.
+    /// Uses the math module for deviation computation.
     fn validate_prices(
         primary_price: i128,
         primary_timestamp: u64,
@@ -358,21 +456,9 @@ impl OmniCheckContract {
         }
 
         // ---------------------------------------------------------------
-        // Check 5: Compute deviation
-        //
-        // deviation_bps = (|primary - fallback| * 10_000) / primary
+        // Check 5: Compute deviation using math module
         // ---------------------------------------------------------------
-        let diff = if primary_price >= fallback_price {
-            primary_price.saturating_sub(fallback_price)
-        } else {
-            fallback_price.saturating_sub(primary_price)
-        };
-
-        // Scale to basis points
-        let deviation_bps = diff
-            .checked_mul(10_000)
-            .and_then(|scaled| scaled.checked_div(primary_price))
-            .unwrap_or(i128::MAX);
+        let deviation_bps = math::compute_deviation_bps(primary_price, fallback_price);
 
         // ---------------------------------------------------------------
         // Check 6: Deviation threshold

@@ -27,11 +27,9 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import {
-  CONTRACT_ID,
-  RPC_URL,
-  NETWORK_PASSPHRASE,
   CONTRACT_POLL_INTERVAL_MS,
 } from "../config";
+import type { NetworkConfig } from "../components/NetworkSelector";
 
 // Dummy valid Stellar public key for simulation (does not need to be funded)
 const DUMMY_ACCOUNT =
@@ -123,14 +121,15 @@ function toNumber(value: unknown): number {
 async function simulateCall(
   server: rpc.Server,
   contractId: string,
-  functionName: string
+  functionName: string,
+  networkPassphrase: string
 ): Promise<unknown> {
   const contract = new Contract(contractId);
   const op = contract.call(functionName);
 
   const tx = new TransactionBuilder(new Account(DUMMY_ACCOUNT, "0"), {
     fee: "0",
-    networkPassphrase: NETWORK_PASSPHRASE,
+    networkPassphrase,
   })
     .addOperation(op as xdr.Operation)
     .setTimeout(30)
@@ -158,9 +157,10 @@ async function simulateCall(
 
 interface ContractDataProviderProps {
   children: ReactNode;
+  networkConfig: NetworkConfig;
 }
 
-export function ContractDataProvider({ children }: ContractDataProviderProps) {
+export function ContractDataProvider({ children, networkConfig }: ContractDataProviderProps) {
   const [isLocked, setIsLocked] = useState<boolean | null>(null);
   const [config, setConfig] = useState<ContractConfig | null>(null);
   const [lastDiagnostic, setLastDiagnostic] = useState<number | null>(null);
@@ -169,20 +169,25 @@ export function ContractDataProvider({ children }: ContractDataProviderProps) {
   const serverRef = useRef<rpc.Server | null>(null);
 
   const getServer = useCallback(() => {
-    if (!serverRef.current) {
-      serverRef.current = new rpc.Server(RPC_URL);
+    if (!serverRef.current || String(serverRef.current.serverURL) !== networkConfig.rpcUrl) {
+      serverRef.current = new rpc.Server(networkConfig.rpcUrl);
     }
     return serverRef.current;
-  }, []);
+  }, [networkConfig.rpcUrl]);
 
   const refresh = useCallback(async () => {
     try {
       const server = getServer();
+      const contractId = networkConfig.defaultContractId;
+
+      if (!contractId) {
+        throw new Error("No contract ID configured for this network");
+      }
 
       const [lockedRaw, configRaw, diagnosticRaw] = await Promise.all([
-        simulateCall(server, CONTRACT_ID, "is_locked"),
-        simulateCall(server, CONTRACT_ID, "get_config"),
-        simulateCall(server, CONTRACT_ID, "get_last_diagnostic"),
+        simulateCall(server, contractId, "is_locked", networkConfig.networkPassphrase),
+        simulateCall(server, contractId, "get_config", networkConfig.networkPassphrase),
+        simulateCall(server, contractId, "get_last_diagnostic", networkConfig.networkPassphrase),
       ]);
 
       // is_locked returns bool directly
@@ -213,7 +218,7 @@ export function ContractDataProvider({ children }: ContractDataProviderProps) {
       setError(msg);
       setIsLoaded(true);
     }
-  }, [getServer]);
+  }, [getServer, networkConfig]);
 
   useEffect(() => {
     let isMounted = true;
